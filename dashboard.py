@@ -14,7 +14,7 @@ SCOPES = [
     "UserAuthenticationMethod.Read.All",
     "AuditLog.Read.All",
     "Reports.Read.All",
-    "Organization.Read.All",
+   
     "User.ReadBasic.All"
 ]
 
@@ -64,7 +64,7 @@ def check_admin_roles(token):
     )
     if response.status_code == 200:
         roles = response.json().get('value', [])
-        admin_roles = ["Global Administrator", "Security Administrator", "Authentication Administrator"]
+        admin_roles = ["Security Administrator", "Authentication Administrator"]
         return any(role['displayName'] in admin_roles for role in roles)
     return False
 
