@@ -9,13 +9,10 @@ import requests
 # Configuration with expanded scopes
 APP_ID = "14d82eec-204b-4c2f-b7e8-296a70dab67e"
 SCOPES = [
-    "User.Read",
+    "User.Read.All",
     "Directory.Read.All",
-    "UserAuthenticationMethod.Read.All",
     "AuditLog.Read.All",
-    "Reports.Read.All",
-   
-    "User.ReadBasic.All"
+    "UserAuthenticationMethod.Read.All"
 ]
 
 class GraphAuth:
