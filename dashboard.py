@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # Debug information
-st.write("App version: 2.0")
+st.write("App version: .0")
 st.write("Python version:", sys.version)
 st.write("Streamlit version:", st.__version__)
 
@@ -49,65 +49,45 @@ SCOPES = [
 class GraphAuth:
     def __init__(self):
         try:
-            self.app = msal.PublicClientApplication(APP_ID)
+            # Add cache
+            cache = msal.SerializableTokenCache()
+            
+            # Try to load the token cache from streamlit session state
+            if 'token_cache' in st.session_state:
+                cache.deserialize(st.session_state['token_cache'])
+                
+            self.app = msal.PublicClientApplication(
+                APP_ID,
+                token_cache=cache
+            )
+            
+            # Update session state with token cache
+            if cache.has_state_changed:
+                st.session_state['token_cache'] = cache.serialize()
+                
         except Exception as e:
             st.error(f"MSAL initialization error: {str(e)}")
             st.code(traceback.format_exc())
-    
-def get_token(self) -> Optional[str]:
-    try:
-        # Check for existing token
-        accounts = self.app.get_accounts()
-        if accounts:
-            result = self.app.acquire_token_silent(SCOPES, account=accounts[0])
-            if result:
-                return result['access_token']
 
-        # Initialize device flow
-        flow = self.app.initiate_device_flow(scopes=SCOPES)
-        if 'user_code' not in flow:
-            st.error('Failed to create device flow')
-            return None
-
-        placeholder = st.empty()
-
+    def get_token(self) -> Optional[str]:
         try:
-            # Try to use Selenium for automated browser handling
-            from selenium import webdriver
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-
-            with placeholder.container():
-                st.markdown("### Microsoft Authentication")
-                st.info("Automating browser authentication...")
-
-            # Initialize browser
-            options = webdriver.ChromeOptions()
-            options.add_argument('--start-maximized')
-            driver = webdriver.Chrome(options=options)
-
-            # Open Microsoft login page
-            driver.get(flow['verification_uri'])
-
-            # Wait for code input field and enter code
-            code_input = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.NAME, "code"))
-            )
-            code_input.send_keys(flow['user_code'])
-
-            # Wait for authentication to complete
-            with placeholder.container():
-                with st.spinner("Completing authentication in browser..."):
-                    result = self.app.acquire_token_by_device_flow(flow)
-
-            # Close browser
-            driver.quit()
-
-        except Exception as selenium_error:
-            # Fall back to manual browser handling if Selenium fails
-            st.warning("Automated browser handling failed, falling back to manual mode...")
+            # Check for existing token
+            accounts = self.app.get_accounts()
+            if accounts:
+                result = self.app.acquire_token_silent(SCOPES, account=accounts[0])
+                if result:
+                    return result['access_token']
             
+            # Initialize device flow
+            flow = self.app.initiate_device_flow(scopes=SCOPES)
+            if 'user_code' not in flow:
+                st.error('Failed to create device flow')
+                return None
+
+            # Create placeholder for dynamic content
+            placeholder = st.empty()
+            
+            # Show initial message
             with placeholder.container():
                 st.markdown("### Microsoft Authentication Required")
                 st.info("Opening browser for authentication...")
@@ -117,7 +97,7 @@ def get_token(self) -> Optional[str]:
                 with text_col:
                     st.write("👆 Code has been copied to clipboard. Paste it in the browser window.")
 
-            # Copy code to clipboard
+            # Copy code to clipboard using JavaScript
             js_code = f"""
                 <script>
                     navigator.clipboard.writeText('{flow['user_code']}');
@@ -125,36 +105,48 @@ def get_token(self) -> Optional[str]:
             """
             st.components.v1.html(js_code, height=0)
 
-            # Open browser manually
+            # Open browser
+            import webbrowser
             webbrowser.open_new(flow['verification_uri'])
 
-            # Wait for authentication
+            # Show waiting message
             with placeholder.container():
                 with st.spinner("Waiting for authentication..."):
                     result = self.app.acquire_token_by_device_flow(flow)
 
-        # Clear placeholder
-        placeholder.empty()
+            # Clear the placeholder after authentication
+            placeholder.empty()
 
-        if 'access_token' in result:
-            temp_placeholder = st.empty()
-            temp_placeholder.success("✅ Authentication successful!")
-            time.sleep(2)
-            temp_placeholder.empty()
-            return result['access_token']
+            if 'access_token' in result:
+                # Show success message briefly
+                temp_placeholder = st.empty()
+                temp_placeholder.success("✅ Authentication successful!")
+                import time
+                time.sleep(2)  # Show success message for 2 seconds
+                temp_placeholder.empty()
+                return result['access_token']
 
-        st.error("❌ Authentication failed. Please try again.")
-        return None
+            # If we get here, authentication failed
+            st.error("❌ Authentication failed. Please try again.")
+            return None
 
-    except Exception as e:
-        st.error(f"Authentication error: {str(e)}")
-        st.code(traceback.format_exc())
-        return None
+        except Exception as e:
+            st.error(f"Authentication error: {str(e)}")
+            st.code(traceback.format_exc())
+            return None
 
-    except Exception as e:
-        st.error(f"Authentication error: {str(e)}")
-        st.code(traceback.format_exc())
-        return None
+    def logout(self):
+        try:
+            accounts = self.app.get_accounts()
+            for account in accounts:
+                self.app.remove_account(account)
+            # Clear token cache from session state
+            if 'token_cache' in st.session_state:
+                del st.session_state['token_cache']
+            return True
+        except Exception as e:
+            st.error(f"Logout error: {str(e)}")
+            return False
         try:
             accounts = self.app.get_accounts()
             if accounts:
@@ -487,19 +479,19 @@ def get_mfa_status(token, user_limit=None):
         return None
 
 def main():
-    st.title("MFA Status Dashboard")
+    st.set_page_config(page_title="MFA Dashboard", page_icon="🔐", layout="wide")
     
     # Initialize authentication
     if 'auth' not in st.session_state:
         st.session_state.auth = GraphAuth()
     
-    # Get or refresh token
+    # Get token
     if 'token' not in st.session_state:
         token = st.session_state.auth.get_token()
         if token:
             st.session_state.token = token
         else:
-            st.error("Authentication failed")
+            st.stop()
             return
     
     # Get user info
