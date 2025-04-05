@@ -54,7 +54,107 @@ class GraphAuth:
             st.error(f"MSAL initialization error: {str(e)}")
             st.code(traceback.format_exc())
     
-    def get_token(self) -> Optional[str]:
+def get_token(self) -> Optional[str]:
+    try:
+        # Check for existing token
+        accounts = self.app.get_accounts()
+        if accounts:
+            result = self.app.acquire_token_silent(SCOPES, account=accounts[0])
+            if result:
+                return result['access_token']
+
+        # Initialize device flow
+        flow = self.app.initiate_device_flow(scopes=SCOPES)
+        if 'user_code' not in flow:
+            st.error('Failed to create device flow')
+            return None
+
+        placeholder = st.empty()
+
+        try:
+            # Try to use Selenium for automated browser handling
+            from selenium import webdriver
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            with placeholder.container():
+                st.markdown("### Microsoft Authentication")
+                st.info("Automating browser authentication...")
+
+            # Initialize browser
+            options = webdriver.ChromeOptions()
+            options.add_argument('--start-maximized')
+            driver = webdriver.Chrome(options=options)
+
+            # Open Microsoft login page
+            driver.get(flow['verification_uri'])
+
+            # Wait for code input field and enter code
+            code_input = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.NAME, "code"))
+            )
+            code_input.send_keys(flow['user_code'])
+
+            # Wait for authentication to complete
+            with placeholder.container():
+                with st.spinner("Completing authentication in browser..."):
+                    result = self.app.acquire_token_by_device_flow(flow)
+
+            # Close browser
+            driver.quit()
+
+        except Exception as selenium_error:
+            # Fall back to manual browser handling if Selenium fails
+            st.warning("Automated browser handling failed, falling back to manual mode...")
+            
+            with placeholder.container():
+                st.markdown("### Microsoft Authentication Required")
+                st.info("Opening browser for authentication...")
+                code_col, text_col = st.columns([1, 2])
+                with code_col:
+                    st.code(flow['user_code'], language=None)
+                with text_col:
+                    st.write("👆 Code has been copied to clipboard. Paste it in the browser window.")
+
+            # Copy code to clipboard
+            js_code = f"""
+                <script>
+                    navigator.clipboard.writeText('{flow['user_code']}');
+                </script>
+            """
+            st.components.v1.html(js_code, height=0)
+
+            # Open browser manually
+            webbrowser.open_new(flow['verification_uri'])
+
+            # Wait for authentication
+            with placeholder.container():
+                with st.spinner("Waiting for authentication..."):
+                    result = self.app.acquire_token_by_device_flow(flow)
+
+        # Clear placeholder
+        placeholder.empty()
+
+        if 'access_token' in result:
+            temp_placeholder = st.empty()
+            temp_placeholder.success("✅ Authentication successful!")
+            time.sleep(2)
+            temp_placeholder.empty()
+            return result['access_token']
+
+        st.error("❌ Authentication failed. Please try again.")
+        return None
+
+    except Exception as e:
+        st.error(f"Authentication error: {str(e)}")
+        st.code(traceback.format_exc())
+        return None
+
+    except Exception as e:
+        st.error(f"Authentication error: {str(e)}")
+        st.code(traceback.format_exc())
+        return None
         try:
             accounts = self.app.get_accounts()
             if accounts:
