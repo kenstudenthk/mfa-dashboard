@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # Debug information
-st.write("App version: 1.0")
+st.write("App version: 2.0")
 st.write("Python version:", sys.version)
 st.write("Streamlit version:", st.__version__)
 
